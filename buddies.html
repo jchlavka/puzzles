@@ -110,7 +110,7 @@
   .board-veil .big{font-size:18px;font-weight:700;color:#221E18;}
   .board-veil .sub{font-size:12.5px;color:#6b6356;}
 
-  .panel{display:flex;flex-direction:column;gap:14px;width:min(82vw,300px);}
+  .panel{display:flex;flex-direction:column;gap:8px;width:min(82vw,300px);}
   .modes{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
   .mode-btn{background:var(--panel);border:1px solid var(--panel-border);color:#4a4338;border-radius:8px;
     padding:9px 4px;font-size:12px;cursor:pointer;text-align:center;display:flex;flex-direction:column;
@@ -119,13 +119,18 @@
   .mode-btn.active{border-color:var(--accent);background:#e6effa;color:#143a6b;font-weight:600;}
   .mode-btn.active .k{color:#5b7fb0;}
   .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
-  .pad button{background:var(--panel);border:1px solid var(--panel-border);color:var(--btn-text);
-    border-radius:10px;font-size:22px;font-weight:600;padding:14px 0;cursor:pointer;}
-  .pad button:active{background:#ece4d4;}
+  .pad .num{background:var(--panel);border:1px solid var(--panel-border);color:var(--btn-text);
+    border-radius:10px;font-size:22px;font-weight:600;height:50px;cursor:pointer;}
+  .pad .num:active{background:#ece4d4;}
+  /* color mode reuses the number grid: the 9 swatches take the 1–9 spots; Delete/Undo stay put */
+  .pad .swatch{display:none;height:50px;border-radius:10px;border:1px solid rgba(0,0,0,.2);cursor:pointer;padding:0;}
+  .pad .swatch.swatch-clear{background:#fff;color:#8a8f97;font-size:18px;font-weight:700;}
+  .pad.colormode .num{display:none;}
+  .pad.colormode .swatch{display:flex;align-items:center;justify-content:center;}
   .pad .half{grid-column:span 3;display:grid;grid-template-columns:1fr 1fr;gap:8px;}
-  .pad .half button{width:100%;font-size:14px;font-weight:500;padding:11px 0;}
-  .colors{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;}
-  .swatch{height:30px;padding:0;border-radius:8px;border:1px solid rgba(0,0,0,.18);cursor:pointer;}
+  .pad .half button{width:100%;font-size:14px;font-weight:500;padding:11px 0;cursor:pointer;
+    background:var(--panel);border:1px solid var(--panel-border);color:#4a4338;border-radius:10px;}
+  .pad .half button:active{background:#ece4d4;}
   .hint{color:#8a8170;font-size:11.5px;line-height:1.5;}
   .status{min-height:20px;text-align:center;font-size:13.5px;font-weight:600;color:#6b6356;}
   .status.win{color:#1f7a3d;} .status.bad{color:var(--error);} .status.info{color:var(--accent);}
@@ -214,22 +219,19 @@
       <button type="button" class="mode-btn" data-mode="color" aria-pressed="false">Color<span class="k">V</span></button>
     </div>
     <div class="pad" id="numpad">
-      <button data-n="1">1</button><button data-n="2">2</button><button data-n="3">3</button>
-      <button data-n="4">4</button><button data-n="5">5</button><button data-n="6">6</button>
-      <button data-n="7">7</button><button data-n="8">8</button><button data-n="9">9</button>
-      <div class="half"><button id="btnDelete">Delete</button><button id="btnUndo">Undo</button></div>
-    </div>
-    <div class="colors" id="colorpad" style="display:none">
+      <button class="num" data-n="1">1</button><button class="num" data-n="2">2</button><button class="num" data-n="3">3</button>
+      <button class="num" data-n="4">4</button><button class="num" data-n="5">5</button><button class="num" data-n="6">6</button>
+      <button class="num" data-n="7">7</button><button class="num" data-n="8">8</button><button class="num" data-n="9">9</button>
       <button type="button" class="swatch" style="background:#ef9a9a" data-c="#ef9a9a" aria-label="Red"></button>
       <button type="button" class="swatch" style="background:#ffcc80" data-c="#ffcc80" aria-label="Orange"></button>
       <button type="button" class="swatch" style="background:#fff59d" data-c="#fff59d" aria-label="Yellow"></button>
       <button type="button" class="swatch" style="background:#a5d6a7" data-c="#a5d6a7" aria-label="Green"></button>
       <button type="button" class="swatch" style="background:#90caf9" data-c="#90caf9" aria-label="Blue"></button>
       <button type="button" class="swatch" style="background:#b39ddb" data-c="#b39ddb" aria-label="Purple"></button>
-      <button type="button" class="swatch" style="background:#f48fb1" data-c="#f48fb1" aria-label="Pink"></button>
-      <button type="button" class="swatch" style="background:#bcaaa4" data-c="#bcaaa4" aria-label="Brown"></button>
-      <button type="button" class="swatch" style="background:#cfd8dc" data-c="#cfd8dc" aria-label="Gray"></button>
-      <button type="button" class="swatch" style="background:transparent;border-style:dashed" data-c="" aria-label="Remove color"></button>
+      <button type="button" class="swatch" style="background:#dde1e5" data-c="#dde1e5" aria-label="Light grey"></button>
+      <button type="button" class="swatch" style="background:#9aa0a8" data-c="#9aa0a8" aria-label="Dark grey"></button>
+      <button type="button" class="swatch swatch-clear" data-c="" aria-label="Clear color">✕</button>
+      <div class="half"><button id="btnDelete">Delete</button><button id="btnUndo">Undo</button></div>
     </div>
     <div class="footer-actions">
       <button id="btnConflicts" type="button" aria-pressed="false">Check for conflicts</button>
@@ -410,7 +412,7 @@
   // ---------- input ----------
   const editableSelected=()=>[...selected];
   function setMode(m){mode=m;document.querySelectorAll(".mode-btn").forEach(b=>{const on=b.dataset.mode===m;b.classList.toggle("active",on);b.setAttribute("aria-pressed",on?"true":"false");});
-    document.getElementById("numpad").style.display=m==="color"?"none":"";document.getElementById("colorpad").style.display=m==="color"?"":"none";}
+    document.getElementById("numpad").classList.toggle("colormode",m==="color");}
   function inputNumber(n){
     if(isPausedBlocked())return;const targets=editableSelected();if(!targets.length)return;
     pushUndo();let changed=false;
@@ -482,8 +484,9 @@
 
   // ---------- wiring ----------
   document.querySelectorAll(".mode-btn").forEach(b=>b.addEventListener("click",()=>setMode(b.dataset.mode)));
-  document.getElementById("numpad").addEventListener("click",e=>{const b=e.target.closest("button[data-n]");if(b)inputNumber(+b.dataset.n);});
-  document.getElementById("colorpad").addEventListener("click",e=>{const s=e.target.closest(".swatch");if(s)applyColor(s.dataset.c);});
+  document.getElementById("numpad").addEventListener("click",e=>{
+    const n=e.target.closest("button[data-n]");if(n){inputNumber(+n.dataset.n);return;}
+    const s=e.target.closest(".swatch");if(s)applyColor(s.dataset.c);});
   document.getElementById("btnDelete").addEventListener("click",deleteSelected);
   document.getElementById("btnUndo").addEventListener("click",undo);
   document.getElementById("btnRedo").addEventListener("click",redo);
