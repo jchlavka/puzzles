@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Negotiation — Sudoku</title>
+<style>
+  :root{
+    --page-bg:#EFE9DC; --grid-strong:#2A2520; --grid-thin:#C3BAA8;
+    --cell:#F4EFE3; --cell-given:#EFE9DA;
+    --text:#13447C; --text-given:#1A1714; --pencil:#6B6356;
+    --accent:#1B5FB0; --sel-fill:rgba(27,95,176,0.16); --sel-ring:#1B5FB0;
+    --error:#C0202B; --conflict-fill:#F7D7D2;
+    --panel:#FBF7EE; --panel-border:#D8CFBD; --btn-bg:#ECE5D7; --btn-text:#2E2A22;
+    --seam:#9C9485; --cage:#33302A;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  button{font-family:inherit;}
+  button:focus-visible,.swatch:focus-visible,[role="button"]:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  html,body{margin:0;height:100%;}
+  body{background:var(--page-bg);color:var(--btn-text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    display:flex;flex-direction:column;align-items:center;min-height:100%;padding:18px 14px 40px;gap:16px;}
+  header{text-align:center;max-width:680px;}
+  h1{margin:0 0 2px;font-size:26px;letter-spacing:.5px;color:#221E18;}
+  .byline{color:#7a7264;font-size:14px;margin-bottom:10px;}
+  .rules{background:var(--panel);border:1px solid var(--panel-border);border-radius:10px;
+    padding:12px 16px;font-size:13.5px;line-height:1.5;color:#4a4338;text-align:left;}
+  .rules b{color:#221E18;}
+  .rules-list{margin:6px 0;padding-left:20px;}
+  .rules-list li{margin:2px 0;}
+  .swatch-region{display:inline-block;width:11px;height:11px;border-radius:2px;border:1px solid #b9b09a;vertical-align:-1px;
+    background:conic-gradient(#BCD4EE 0 25%,#F7C795 0 50%,#C2E3B0 0 75%,#DEC9ED 0 100%);}
+  .swatch-cage{display:inline-block;width:13px;height:11px;border:1.4px dashed var(--cage);border-radius:3px;vertical-align:-1px;}
+  .layout{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;justify-content:center;}
+
+  .board-wrap{position:relative;display:flex;flex-direction:column;gap:8px;}
+  .timer-row{display:flex;align-items:center;justify-content:space-between;width:min(82vw,540px);gap:10px;}
+  .timer-pill{display:inline-flex;align-items:baseline;gap:8px;font-variant-numeric:tabular-nums;
+    font-feature-settings:"tnum";background:var(--panel);border:1px solid var(--panel-border);
+    border-radius:999px;padding:5px 14px;min-width:108px;}
+  .timer-pill .lbl{font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:#9a917f;}
+  .timer-pill .clock{font-size:17px;font-weight:600;color:var(--pencil);}
+  .timer-pill.running .clock{color:var(--accent);}
+  .timer-btn{border:1px solid var(--panel-border);background:var(--btn-bg);color:var(--accent);
+    width:38px;height:38px;border-radius:50%;cursor:pointer;display:flex;align-items:center;
+    justify-content:center;font-size:15px;line-height:1;}
+  .timer-btn:active{background:#e2d9c8;}
+
+  #board{position:relative;display:grid;grid-template-columns:repeat(9,1fr);grid-template-rows:repeat(9,1fr);
+    width:min(82vw,540px);height:min(82vw,540px);background:var(--grid-thin);
+    border:3px solid var(--grid-strong);border-radius:5px;gap:1px;touch-action:none;user-select:none;}
+  .cell{position:relative;background:var(--cell);display:flex;align-items:center;justify-content:center;
+    font-size:clamp(20px,5.4vw,34px);font-weight:500;color:var(--text);cursor:pointer;overflow:hidden;}
+  /* nine distinct region colors (verified: black/navy text-legible, adjacent-separable) */
+  .cell.r0{background:#BCD4EE;} .cell.r1{background:#C2E3B0;} .cell.r2{background:#EFE59C;}
+  .cell.r3{background:#F7C795;} .cell.r4{background:#F3C7C7;} .cell.r5{background:#DEC9ED;}
+  .cell.r6{background:#AEE0D6;} .cell.r7{background:#E0D2B6;} .cell.r8{background:#D6D9DD;}
+  .cell.given .val{color:var(--text-given);font-weight:700;} /* clues: bold black vs navy entries */
+
+  .cell .val{position:relative;z-index:5;line-height:1;}
+  .cell.same-digit .val{font-weight:700;background:rgba(27,95,176,.15);border-radius:5px;padding:0 .16em;}
+  .cell .center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-size:clamp(9px,2.2vw,14px);font-weight:600;color:var(--pencil);letter-spacing:1px;
+    z-index:4;padding:0 3px;line-height:1.05;text-align:center;}
+  .cell .corner{position:absolute;inset:3px;z-index:4;color:var(--pencil);font-size:clamp(8px,1.9vw,12px);
+    font-weight:600;pointer-events:none;display:grid;grid-template-columns:1fr 1fr 1fr;grid-template-rows:1fr 1fr 1fr;}
+  .cell .corner span{display:flex;}
+  .corner .c0{justify-content:flex-start;align-items:flex-start;}
+  .corner .c1{justify-content:flex-end;align-items:flex-start;grid-column:3;}
+  .corner .c2{justify-content:flex-start;align-items:flex-end;grid-row:3;}
+  .corner .c3{justify-content:flex-end;align-items:flex-end;grid-row:3;grid-column:3;}
+  .corner .c4{justify-content:center;align-items:flex-start;grid-column:2;grid-row:1;}
+  .corner .c5{justify-content:center;align-items:flex-end;grid-column:2;grid-row:3;}
+  .corner .c6{justify-content:flex-start;align-items:center;grid-row:2;grid-column:1;}
+  .corner .c7{justify-content:flex-end;align-items:center;grid-row:2;grid-column:3;}
+  .corner .c8{justify-content:center;align-items:center;grid-row:2;grid-column:2;}
+
+  .cell .cagelayer{position:absolute;z-index:3;pointer-events:none;}
+  /* conflict wash — above color, below cage/marks/digit (only shown when the aid is on) */
+  .cell.error::before{content:"";position:absolute;inset:0;z-index:2;pointer-events:none;background:var(--conflict-fill);}
+  .cell.error:not(.given) .val{color:var(--error);}
+  .cell.sel::after{content:"";position:absolute;inset:0;z-index:7;background:var(--sel-fill);
+    box-shadow:inset 0 0 0 3px var(--sel-ring);}
+
+  .board-veil{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+    flex-direction:column;gap:6px;background:rgba(239,233,220,.86);backdrop-filter:blur(10px);
+    border-radius:4px;z-index:20;cursor:pointer;text-align:center;}
+  .board-veil.show{display:flex;}
+  .board-veil .big{font-size:18px;font-weight:700;color:#221E18;}
+  .board-veil .sub{font-size:12.5px;color:#6b6356;}
+
+  .panel{display:flex;flex-direction:column;gap:14px;width:min(82vw,300px);}
+  .modes{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+  .mode-btn{background:var(--panel);border:1px solid var(--panel-border);color:#4a4338;border-radius:8px;
+    padding:9px 4px;font-size:12px;cursor:pointer;text-align:center;display:flex;flex-direction:column;
+    align-items:center;gap:3px;line-height:1.1;}
+  .mode-btn .k{font-size:10px;color:#9a917f;}
+  .mode-btn.active{border-color:var(--accent);background:#e6effa;color:#143a6b;font-weight:600;}
+  .mode-btn.active .k{color:#5b7fb0;}
+  .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+  .pad button{background:var(--panel);border:1px solid var(--panel-border);color:var(--btn-text);
+    border-radius:10px;font-size:22px;font-weight:600;padding:14px 0;cursor:pointer;}
+  .pad button:active{background:#ece4d4;}
+  .pad .half{grid-column:span 3;display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .pad .half button{width:100%;font-size:14px;font-weight:500;padding:11px 0;}
+  .colors{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;}
+  .swatch{height:30px;padding:0;border-radius:8px;border:1px solid rgba(0,0,0,.18);cursor:pointer;}
+  .hint{color:#8a8170;font-size:11.5px;line-height:1.5;}
+  .status{min-height:20px;text-align:center;font-size:13.5px;font-weight:600;color:#6b6356;}
+  .status.win{color:#1f7a3d;} .status.bad{color:var(--error);} .status.info{color:var(--accent);}
+  .footer-actions{display:flex;flex-wrap:wrap;gap:8px;}
+  .footer-actions button{flex:1 1 calc(50% - 4px);background:var(--panel);border:1px solid var(--panel-border);
+    color:#4a4338;border-radius:8px;padding:9px;font-size:12.5px;cursor:pointer;}
+  .footer-actions button:active{background:#ece4d4;}
+  .footer-actions button.on{border-color:var(--accent);background:#e6effa;color:#143a6b;font-weight:600;}
+
+  .win-banner{position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+    background:rgba(42,37,32,.55);z-index:50;padding:16px;}
+  .win-banner .card{background:linear-gradient(160deg,#fffdf7,#f3ecdd);border:1px solid var(--panel-border);
+    border-radius:16px;padding:28px 32px;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.28);max-width:380px;width:100%;}
+  .win-banner h2{margin:0 0 4px;font-size:28px;color:#1f7a3d;}
+  .win-banner .lede{margin:0 0 16px;color:#6b6356;font-size:14px;}
+  .stats{list-style:none;margin:0 0 18px;padding:0;text-align:left;border-top:1px solid var(--panel-border);}
+  .stats li{display:flex;justify-content:space-between;gap:12px;padding:8px 2px;
+    border-bottom:1px solid var(--panel-border);font-size:13.5px;}
+  .stats li .k{color:#7a7264;}
+  .stats li .v{color:#221E18;font-weight:600;font-variant-numeric:tabular-nums;text-align:right;}
+  .stats li .v .tag{display:inline-block;margin-left:6px;font-size:11px;font-weight:700;color:var(--accent);}
+  .stats li .v .tag.good{color:#1f7a3d;}
+  .win-banner button{background:var(--accent);border:none;color:#fff;border-radius:8px;padding:10px 22px;font-size:14px;cursor:pointer;}
+  .backlink{position:fixed;top:12px;left:14px;font-size:12.5px;color:#7a7264;text-decoration:none;}
+  .backlink:hover{color:var(--accent);}
+</style>
+</head>
+<body>
+<a class="backlink" href="index.html">← all puzzles</a>
+<header>
+  <h1>Negotiation</h1>
+  <div class="byline">by Jamk · Sudoku variant</div>
+  <div class="rules">
+    <b>Normal Sudoku:</b> fill every row, column, and 3×3 box with 1–9, no repeats.<br>
+    <b>Regions &amp; cages:</b> in addition, two more kinds of region must each also hold 1–9:
+    <ul class="rules-list">
+      <li><span class="swatch-region"></span> the nine <b>colored jigsaw regions</b></li>
+      <li><span class="swatch-cage"></span> the four <b>dotted boxes</b>.</li>
+    </ul>
+  </div>
+</header>
+
+<div class="layout">
+  <div class="board-wrap">
+    <div id="board">
+      <div class="board-veil" id="boardVeil" role="button" tabindex="0" aria-label="Timer paused, activate to resume">
+        <div class="big">Paused</div><div class="sub">Tap to resume</div>
+      </div>
+    </div>
+    <div class="timer-row">
+      <div class="timer-pill" id="timerPill"><span class="lbl">Time</span><span class="clock" id="clock">0:00</span></div>
+      <button class="timer-btn" id="timerBtn" title="Pause / resume (P)" aria-label="Resume timer">▶</button>
+    </div>
+    <div class="status" id="status" aria-live="polite"></div>
+  </div>
+
+  <div class="panel">
+    <div class="modes">
+      <button type="button" class="mode-btn active" data-mode="normal" aria-pressed="true">Digit<span class="k">Z</span></button>
+      <button type="button" class="mode-btn" data-mode="corner" aria-pressed="false">Corner<span class="k">X</span></button>
+      <button type="button" class="mode-btn" data-mode="center" aria-pressed="false">Center<span class="k">C</span></button>
+      <button type="button" class="mode-btn" data-mode="color" aria-pressed="false">Color<span class="k">V</span></button>
+    </div>
+    <div class="pad" id="numpad">
+      <button data-n="1">1</button><button data-n="2">2</button><button data-n="3">3</button>
+      <button data-n="4">4</button><button data-n="5">5</button><button data-n="6">6</button>
+      <button data-n="7">7</button><button data-n="8">8</button><button data-n="9">9</button>
+      <div class="half"><button id="btnDelete">Delete</button><button id="btnUndo">Undo</button></div>
+    </div>
+    <div class="colors" id="colorpad" style="display:none">
+      <button type="button" class="swatch" style="background:#ef9a9a" data-c="#ef9a9a" aria-label="Red"></button>
+      <button type="button" class="swatch" style="background:#ffcc80" data-c="#ffcc80" aria-label="Orange"></button>
+      <button type="button" class="swatch" style="background:#fff59d" data-c="#fff59d" aria-label="Yellow"></button>
+      <button type="button" class="swatch" style="background:#a5d6a7" data-c="#a5d6a7" aria-label="Green"></button>
+      <button type="button" class="swatch" style="background:#90caf9" data-c="#90caf9" aria-label="Blue"></button>
+      <button type="button" class="swatch" style="background:#b39ddb" data-c="#b39ddb" aria-label="Purple"></button>
+      <button type="button" class="swatch" style="background:#f48fb1" data-c="#f48fb1" aria-label="Pink"></button>
+      <button type="button" class="swatch" style="background:#bcaaa4" data-c="#bcaaa4" aria-label="Brown"></button>
+      <button type="button" class="swatch" style="background:#cfd8dc" data-c="#cfd8dc" aria-label="Gray"></button>
+      <button type="button" class="swatch" style="background:transparent;border-style:dashed" data-c="" aria-label="Remove color"></button>
+    </div>
+    <div class="footer-actions">
+      <button id="btnConflicts" type="button" aria-pressed="false">Check for conflicts</button>
+      <button id="btnRedo">Redo</button>
+      <button id="btnRestart">Restart</button>
+    </div>
+    <div class="hint">
+      Click / drag to select · Shift-click to add · Arrows to move · digits to fill · Backspace clears ·
+      <b>P</b> pauses. <b>Check for conflicts</b> is an optional aid (off by default) that highlights any repeated digit — using it is noted on your solve. Progress saves automatically.
+    </div>
+  </div>
+</div>
+
+<div class="win-banner" id="winBanner">
+  <div class="card">
+    <h2>Solved! 🧩</h2>
+    <p class="lede" id="winLede"></p>
+    <ul class="stats" id="statsList"></ul>
+    <button id="winClose">Close</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  // ---------- puzzle data ----------
+  const REGION="000006677011166677011166777011186677028888455228888455223334455223334455223334445";
+  const CAGE  =".0.3.333.00.33333.00.......001......001........1........1...2...11.2.22.111.22222";
+  const SOLstr="567891423482536971391427685273618594158942736946753812839265147614379258725184369";
+  const GIVstr="567890000400000000300000000200000000100000000000000000000000147000000258000000369";
+
+  const STORAGE_KEY="negotiation-jamk-v1", TIMER_KEY="negotiation-jamk-timer-v1", BEST_KEY="negotiation-jamk-best-v1";
+  const SOLUTION=[...SOLstr].map(Number), GIVEN=[...GIVstr].map(Number);
+  const REG=[...REGION].map(Number), CAG=[...CAGE].map(ch=>ch==="."?-1:+ch);
+  const GIVEN_COUNT=GIVEN.filter(v=>v).length;
+  const idx=(r,c)=>r*9+c, rowOf=i=>(i/9)|0, colOf=i=>i%9;
+
+  // units: rows, cols, boxes, 9 regions, 4 cages
+  const UNITS=[];
+  for(let r=0;r<9;r++)UNITS.push([...Array(9)].map((_,c)=>idx(r,c)));
+  for(let c=0;c<9;c++)UNITS.push([...Array(9)].map((_,r)=>idx(r,c)));
+  for(let br=0;br<9;br+=3)for(let bc=0;bc<9;bc+=3){const u=[];for(let dr=0;dr<3;dr++)for(let dc=0;dc<3;dc++)u.push(idx(br+dr,bc+dc));UNITS.push(u);}
+  {const byR={};for(let i=0;i<81;i++){(byR[REG[i]]=byR[REG[i]]||[]).push(i);}Object.values(byR).forEach(u=>UNITS.push(u));}
+  {const byC={};for(let i=0;i<81;i++)if(CAG[i]>=0){(byC[CAG[i]]=byC[CAG[i]]||[]).push(i);}Object.values(byC).forEach(u=>UNITS.push(u));}
+
+  // ---------- state ----------
+  function blankState(){const cells=[];for(let i=0;i<81;i++){const given=GIVEN[i]!==0;
+    cells.push({r:rowOf(i),c:colOf(i),given,value:given?GIVEN[i]:0,corner:[],center:[],color:""});}return {cells};}
+  let state=blankState(), mode="normal";
+  const selected=new Set();
+  let undoStack=[], redoStack=[];
+  let elapsed=0,running=false,started=false,solved=false,lastTick=0,tickHandle=null,lastSave=0;
+  let everUsedPencil=false,showConflicts=false,usedConflicts=false,veilArmed=false;
+
+  // ---------- persistence ----------
+  const now=()=>Date.now();
+  function save(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(state.cells.map(c=>c.given?0:[c.value,c.corner.join(""),c.center.join(""),c.color])));}catch(e){}}
+  function saveTimer(){try{localStorage.setItem(TIMER_KEY,JSON.stringify({elapsed:Math.round(elapsed),started,solved,everUsedPencil,usedConflicts,showConflicts}));}catch(e){}}
+  function loadAll(){
+    try{const raw=localStorage.getItem(STORAGE_KEY);if(raw)JSON.parse(raw).forEach((v,i)=>{if(v===0)return;const cell=state.cells[i];if(cell.given)return;
+      cell.value=v[0]||0;cell.corner=v[1]?v[1].split("").map(Number):[];cell.center=v[2]?v[2].split("").map(Number):[];cell.color=v[3]||"";});}catch(e){}
+    try{const t=JSON.parse(localStorage.getItem(TIMER_KEY)||"null");if(t){elapsed=t.elapsed||0;started=!!t.started;solved=!!t.solved;
+      everUsedPencil=!!t.everUsedPencil;usedConflicts=!!t.usedConflicts;showConflicts=!!t.showConflicts;}}catch(e){}
+    if(state.cells.some(c=>!c.given&&(c.value||c.corner.length||c.center.length||c.color)))started=true;
+  }
+  const getBest=()=>{const v=parseInt(localStorage.getItem(BEST_KEY)||"",10);return isNaN(v)?null:v;};
+  const snapshot=()=>JSON.stringify(state.cells.map(c=>[c.value,c.corner.slice(),c.center.slice(),c.color]));
+  function pushUndo(){undoStack.push(snapshot());if(undoStack.length>200)undoStack.shift();redoStack.length=0;}
+  function restore(s){JSON.parse(s).forEach((v,i)=>{const cell=state.cells[i];if(cell.given)return;cell.value=v[0];cell.corner=v[1];cell.center=v[2];cell.color=v[3];});}
+
+  // ---------- build DOM ----------
+  const board=document.getElementById("board");
+  const cellEls=[];
+  for(let i=0;i<81;i++){
+    const r=rowOf(i),c=colOf(i),reg=REG[i],given=GIVEN[i]!==0,cage=CAG[i];
+    const el=document.createElement("div");
+    el.className="cell r"+reg+(given?" given":""); el.dataset.i=i;
+    const boxL=c%3===0&&c!==0, boxT=r%3===0&&r!==0;
+    const seamL=c>0&&REG[i]!==REG[i-1], seamT=r>0&&REG[i]!==REG[i-9];
+    const sh=[];
+    if(boxL)sh.push("inset 2px 0 0 0 var(--grid-strong)");
+    if(boxT)sh.push("inset 0 2px 0 0 var(--grid-strong)");
+    if(seamL&&!boxL)sh.push("inset 1.25px 0 0 0 var(--seam)");
+    if(seamT&&!boxT)sh.push("inset 0 1.25px 0 0 var(--seam)");
+    if(sh.length)el.style.boxShadow=sh.join(",");
+    el.innerHTML='';
+    if(cage>=0){
+      const t=r===0||CAG[i-9]!==cage, b=r===8||CAG[i+9]!==cage, l=c===0||CAG[i-1]!==cage, rt=c===8||CAG[i+1]!==cage;
+      const cg=document.createElement("div");cg.className="cagelayer";
+      cg.style.top=t?"4px":"0";cg.style.bottom=b?"4px":"0";cg.style.left=l?"4px":"0";cg.style.right=rt?"4px":"0";
+      const dash="2px dashed var(--cage)";
+      if(t)cg.style.borderTop=dash; if(b)cg.style.borderBottom=dash; if(l)cg.style.borderLeft=dash; if(rt)cg.style.borderRight=dash;
+      el.appendChild(cg);
+    }
+    const rest=document.createElement("div");rest.style.display="contents";
+    rest.innerHTML='<div class="corner"></div><div class="center"></div><div class="val"></div>';
+    el.appendChild(rest);
+    board.appendChild(el); cellEls.push(el);
+  }
+
+  // ---------- conflicts ----------
+  let conflicts=new Set();
+  function computeConflicts(){
+    conflicts=new Set();
+    for(const u of UNITS){const seen={};for(const i of u){const v=state.cells[i].value;if(!v)continue;
+      if(seen[v]!==undefined){conflicts.add(i);conflicts.add(seen[v]);}else seen[v]=i;}}
+  }
+  function getSoleSelectedDigit(){let d=null;for(const i of selected){const v=state.cells[i].value;if(!v)return null;if(d===null)d=v;else if(d!==v)return null;}return d;}
+  function render(){
+    const selDigit=getSoleSelectedDigit();
+    for(let i=0;i<81;i++){
+      const cell=state.cells[i],el=cellEls[i];
+      const valEl=el.querySelector(".val"),cornerEl=el.querySelector(".corner"),centerEl=el.querySelector(".center");
+      el.classList.toggle("sel",selected.has(i));
+      if(cell.value){valEl.textContent=cell.value;cornerEl.innerHTML="";centerEl.textContent="";}
+      else{valEl.textContent="";
+        cornerEl.innerHTML=cell.corner.slice().sort((a,b)=>a-b).map((n,k)=>'<span class="c'+k+'">'+n+'</span>').join("");
+        centerEl.textContent=cell.center.slice().sort((a,b)=>a-b).join("");}
+      el.style.background=cell.color||"";  /* color as cell bg so box/seam lines stay visible */
+      el.classList.toggle("same-digit",!!selDigit&&cell.value===selDigit);
+      el.classList.toggle("error",showConflicts&&conflicts.has(i));
+    }
+  }
+  function refresh(){computeConflicts();render();save();saveTimer();}
+
+  // ---------- selection ----------
+  let dragging=false,dragAdd=true;
+  const selectOnly=i=>{selected.clear();selected.add(i);};
+  board.addEventListener("pointerdown",e=>{
+    const el=e.target.closest(".cell");if(!el)return;board.setPointerCapture(e.pointerId);
+    const i=+el.dataset.i;dragging=true;
+    if(e.shiftKey||e.ctrlKey||e.metaKey){dragAdd=!selected.has(i);if(dragAdd)selected.add(i);else selected.delete(i);}
+    else{selectOnly(i);dragAdd=true;}render();
+  });
+  board.addEventListener("pointermove",e=>{
+    if(!dragging)return;const el=document.elementFromPoint(e.clientX,e.clientY),cellEl=el&&el.closest&&el.closest(".cell");
+    if(!cellEl||!board.contains(cellEl))return;const i=+cellEl.dataset.i;if(dragAdd)selected.add(i);else selected.delete(i);render();
+  });
+  window.addEventListener("pointerup",()=>{dragging=false;});
+
+  // ---------- timer ----------
+  const clockEl=document.getElementById("clock"),timerPill=document.getElementById("timerPill"),
+        timerBtn=document.getElementById("timerBtn"),boardVeil=document.getElementById("boardVeil");
+  function fmt(total){total=Math.floor(total);const h=(total/3600)|0,m=((total%3600)/60)|0,s=total%60,pad=n=>String(n).padStart(2,"0");return h>0?h+":"+pad(m)+":"+pad(s):m+":"+pad(s);}
+  function isPausedBlocked(){return !running&&started&&!solved&&veilArmed;}
+  function renderTimer(){
+    clockEl.textContent=(!started&&elapsed===0)?"0:00":fmt(elapsed);
+    timerPill.classList.toggle("running",running);
+    timerPill.querySelector(".lbl").textContent=running?"Time":(solved?"Time":(started?"Paused":"Ready"));
+    timerBtn.textContent=running?"⏸":"▶";
+    timerBtn.setAttribute("aria-label",running?"Pause timer":"Resume timer");
+    timerBtn.setAttribute("aria-pressed",(!running&&started&&!solved)?"true":"false");
+    boardVeil.classList.toggle("show",isPausedBlocked());
+  }
+  function tick(){const t=now();elapsed+=(t-lastTick)/1000;lastTick=t;clockEl.textContent=fmt(elapsed);if(t-lastSave>5000){saveTimer();lastSave=t;}}
+  function startRunning(){if(running||solved)return;running=true;started=true;veilArmed=false;lastTick=now();tickHandle=setInterval(tick,250);renderTimer();}
+  function pause(explicit){if(!running){if(explicit){veilArmed=true;renderTimer();}return;}
+    const t=now();elapsed+=(t-lastTick)/1000;running=false;clearInterval(tickHandle);tickHandle=null;
+    if(explicit!==false)veilArmed=true;saveTimer();lastSave=now();renderTimer();}
+  function toggleTimer(){if(solved)return;if(running)pause(true);else if(started){veilArmed=false;startRunning();}}
+  function onMutate(){if(!solved&&!running)startRunning();}
+  function resumeFromVeil(){if(started&&!solved){veilArmed=false;startRunning();}}
+  timerBtn.addEventListener("click",toggleTimer);
+  boardVeil.addEventListener("click",resumeFromVeil);
+  boardVeil.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();e.stopPropagation();resumeFromVeil();}});
+  document.addEventListener("visibilitychange",()=>{if(document.hidden&&running)pause(true);});
+  window.addEventListener("blur",()=>{if(running)pause(true);});
+  window.addEventListener("pagehide",()=>{if(running){const t=now();elapsed+=(t-lastTick)/1000;lastTick=t;}saveTimer();});
+
+  // ---------- input ----------
+  const editableSelected=()=>[...selected].filter(i=>!state.cells[i].given);
+  function setMode(m){mode=m;document.querySelectorAll(".mode-btn").forEach(b=>{const on=b.dataset.mode===m;b.classList.toggle("active",on);b.setAttribute("aria-pressed",on?"true":"false");});
+    document.getElementById("numpad").style.display=m==="color"?"none":"";document.getElementById("colorpad").style.display=m==="color"?"":"none";}
+  function inputNumber(n){
+    if(isPausedBlocked())return;const targets=editableSelected();if(!targets.length)return;
+    pushUndo();let changed=false;
+    if(mode==="normal"){const allSet=targets.every(i=>state.cells[i].value===n);
+      targets.forEach(i=>{const cell=state.cells[i];
+        if(allSet){if(cell.value){cell.value=0;changed=true;}}
+        else{if(cell.value!==n||cell.corner.length||cell.center.length){cell.value=n;cell.corner=[];cell.center=[];changed=true;}}});
+    }else if(mode==="corner"||mode==="center"){const list=mode==="corner"?"corner":"center",relevant=targets.filter(i=>!state.cells[i].value);
+      if(!relevant.length){undoStack.pop();return;}
+      const allHave=relevant.every(i=>state.cells[i][list].includes(n));
+      relevant.forEach(i=>{const arr=state.cells[i][list],pos=arr.indexOf(n);
+        if(allHave){if(pos>=0){arr.splice(pos,1);changed=true;}}else{if(pos<0&&arr.length<9){arr.push(n);changed=true;everUsedPencil=true;}}});}
+    if(!changed){undoStack.pop();return;}
+    onMutate();refresh();checkWin();
+  }
+  function deleteSelected(){
+    if(isPausedBlocked())return;const targets=editableSelected();if(!targets.length)return;
+    pushUndo();let changed=false;
+    targets.forEach(i=>{const cell=state.cells[i];
+      if(mode==="color"){if(cell.color){cell.color="";changed=true;}return;}
+      if(cell.value){cell.value=0;changed=true;}else if(cell.center.length){cell.center=[];changed=true;}
+      else if(cell.corner.length){cell.corner=[];changed=true;}else if(cell.color){cell.color="";changed=true;}});
+    if(!changed){undoStack.pop();return;}
+    onMutate();refresh();
+  }
+  function applyColor(col){
+    if(isPausedBlocked())return;const targets=editableSelected().length?editableSelected():[...selected];if(!targets.length)return;
+    pushUndo();const allSame=targets.every(i=>state.cells[i].color===col);let changed=false;
+    targets.forEach(i=>{const nv=allSame?"":col;if(state.cells[i].color!==nv){state.cells[i].color=nv;changed=true;}});
+    if(!changed){undoStack.pop();return;}
+    onMutate();refresh();
+  }
+  function undo(){if(isPausedBlocked()||!undoStack.length)return;redoStack.push(snapshot());restore(undoStack.pop());refresh();}
+  function redo(){if(isPausedBlocked()||!redoStack.length)return;undoStack.push(snapshot());restore(redoStack.pop());refresh();}
+
+  // ---------- conflict aid toggle ----------
+  const statusEl=document.getElementById("status"),btnConflicts=document.getElementById("btnConflicts");
+  function renderConflictBtn(){
+    btnConflicts.textContent=(showConflicts?"✓ ":"")+"Check for conflicts";
+    btnConflicts.classList.toggle("on",showConflicts);
+    btnConflicts.setAttribute("aria-pressed",showConflicts?"true":"false");
+  }
+  function toggleConflicts(){
+    showConflicts=!showConflicts;
+    if(showConflicts)usedConflicts=true;
+    renderConflictBtn();refresh();
+    statusEl.textContent=showConflicts?"Conflict highlighting on — repeated digits now show in red.":"";
+    statusEl.className="status";
+  }
+
+  // ---------- win / check ----------
+  const isComplete=()=>state.cells.every(c=>c.value);
+  const matchesSolution=()=>state.cells.every((c,i)=>c.value===SOLUTION[i]);
+  function resolveBest(finalTime,store){const prev=getBest();if(prev===null||finalTime<prev){if(store){try{localStorage.setItem(BEST_KEY,String(Math.round(finalTime)));}catch(e){}}return{bestVal:finalTime,newBest:store};}return{bestVal:prev,newBest:false};}
+  function buildStats(finalTime,best){
+    const placed=state.cells.filter(c=>!c.given&&c.value).length;
+    const checkerUsed=usedConflicts;
+    const rows=[
+      {k:"Time",v:fmt(finalTime)},
+      {k:"Best time",v:fmt(best.bestVal)+(best.newBest?' <span class="tag">New best!</span>':'')},
+      {k:"Checker used",v:checkerUsed?"Yes":'No <span class="tag good">Unaided</span>'},
+      {k:"You placed",v:placed+" of "+(81-GIVEN_COUNT)},
+      {k:"Style",v:everUsedPencil?"With pencil marks":"In pen"},
+    ];
+    document.getElementById("statsList").innerHTML=rows.map(r=>'<li><span class="k">'+r.k+'</span><span class="v">'+r.v+'</span></li>').join("");
+    document.getElementById("winLede").textContent=checkerUsed?"Solved — with a little help from the checker.":"A clean, unassisted solve. 🎉";
+  }
+  function checkWin(){
+    if(isComplete()&&matchesSolution()){
+      pause(false);solved=true;running=false;veilArmed=false;
+      if(tickHandle){clearInterval(tickHandle);tickHandle=null;}saveTimer();
+      statusEl.textContent="Solved!";statusEl.className="status win";
+      buildStats(elapsed,resolveBest(elapsed,true));renderTimer();
+      document.getElementById("winBanner").style.display="flex";return true;
+    }
+    return false;
+  }
+  // ---------- wiring ----------
+  document.querySelectorAll(".mode-btn").forEach(b=>b.addEventListener("click",()=>setMode(b.dataset.mode)));
+  document.getElementById("numpad").addEventListener("click",e=>{const b=e.target.closest("button[data-n]");if(b)inputNumber(+b.dataset.n);});
+  document.getElementById("colorpad").addEventListener("click",e=>{const s=e.target.closest(".swatch");if(s)applyColor(s.dataset.c);});
+  document.getElementById("btnDelete").addEventListener("click",deleteSelected);
+  document.getElementById("btnUndo").addEventListener("click",undo);
+  document.getElementById("btnRedo").addEventListener("click",redo);
+  document.getElementById("btnConflicts").addEventListener("click",toggleConflicts);
+  document.getElementById("btnRestart").addEventListener("click",()=>{
+    if(!confirm("Clear all your progress, stats, and the timer, and start over?"))return;
+    state=blankState();selected.clear();undoStack=[];redoStack=[];
+    elapsed=0;running=false;started=false;solved=false;veilArmed=false;
+    everUsedPencil=false;showConflicts=false;usedConflicts=false;
+    if(tickHandle){clearInterval(tickHandle);tickHandle=null;}
+    statusEl.textContent="";statusEl.className="status";renderConflictBtn();
+    localStorage.removeItem(STORAGE_KEY);localStorage.removeItem(TIMER_KEY);
+    refresh();renderTimer();
+  });
+  document.getElementById("winClose").addEventListener("click",()=>{document.getElementById("winBanner").style.display="none";});
+
+  window.addEventListener("keydown",e=>{
+    const k=e.key;
+    if(isPausedBlocked()&&k!=='p'&&k!=='P'){e.preventDefault();return;}
+    if(k>='1'&&k<='9'){if(e.metaKey||e.ctrlKey||e.altKey)return;inputNumber(+k);e.preventDefault();return;}
+    switch(k){
+      case "Backspace":case "Delete":deleteSelected();e.preventDefault();return;
+      case "z":case "Z":if(e.metaKey||e.ctrlKey){e.shiftKey?redo():undo();e.preventDefault();return;}setMode("normal");return;
+      case "y":case "Y":if(e.metaKey||e.ctrlKey){redo();e.preventDefault();}return;
+      case "x":case "X":if(e.metaKey||e.ctrlKey)return;setMode("corner");return;
+      case "c":case "C":if(e.metaKey||e.ctrlKey)return;setMode("center");return;
+      case "v":case "V":if(e.metaKey||e.ctrlKey)return;setMode("color");return;
+      case "p":case "P":if(e.metaKey||e.ctrlKey)return;toggleTimer();return;
+    }
+    const arrows={ArrowUp:[-1,0],ArrowDown:[1,0],ArrowLeft:[0,-1],ArrowRight:[0,1]};
+    if(arrows[k]){e.preventDefault();
+      let base=selected.size?[...selected][selected.size-1]:idx(4,4),r=rowOf(base),c=colOf(base);
+      r=(r+arrows[k][0]+9)%9;c=(c+arrows[k][1]+9)%9;const ni=idx(r,c);
+      if(e.shiftKey)selected.add(ni);else selectOnly(ni);render();}
+  });
+  board.addEventListener("dblclick",e=>e.preventDefault());
+
+  // ---------- init ----------
+  loadAll();setMode("normal");renderConflictBtn();computeConflicts();render();renderTimer();
+  if(solved){statusEl.textContent="Solved!";statusEl.className="status win";buildStats(elapsed,resolveBest(elapsed,false));}
+})();
+</script>
+</body>
+</html>
